@@ -1,0 +1,7 @@
+node_modules/
+dist/
+.env
+agora_gateway.db
+agora_gateway.db-wal
+agora_gateway.db-shm
+.DS_Store
