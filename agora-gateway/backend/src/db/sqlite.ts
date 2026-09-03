@@ -47,7 +47,8 @@ db.exec(`
     quoted_total INTEGER NOT NULL,
     expires_at INTEGER NOT NULL,
     approved INTEGER DEFAULT 0,
-    razorpay_link TEXT
+    razorpay_link TEXT,
+    shipping_address TEXT
   );
 `);
 

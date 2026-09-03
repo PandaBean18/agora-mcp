@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title><%= storeName %></title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50 p-8 font-sans">
+    <div class="max-w-6xl mx-auto">
+        <div class="flex justify-between items-center mb-8">
+            <h1 class="text-4xl font-bold text-gray-900"><%= storeName %></h1>
+            <a href="/admin" class="text-sm text-gray-500 hover:text-gray-900">Admin Dashboard &rarr;</a>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <% products.forEach(function(product) { %>
+                <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md transition">
+                    <% if (product.imageUrl || product.image) { %>
+                        <img src="<%= product.imageUrl || product.image %>" class="w-full h-56 object-cover" alt="Product">
+                    <% } else { %>
+                        <div class="w-full h-56 bg-gray-200 flex items-center justify-center text-gray-400">No Image</div>
+                    <% } %>
+                    <div class="p-5">
+                        <h2 class="text-xl font-bold text-gray-900"><%= product.title || product.name || product.cardName %></h2>
+                        <p class="text-gray-500 mt-2 text-sm line-clamp-2"><%= product.details || product.description %></p>
+                        <div class="mt-4 flex justify-between items-center">
+                            <span class="text-2xl font-bold text-indigo-600">₹<%= (product.retailPrice || product.cost || product.usdPrice).toLocaleString() %></span>
+                            <span class="text-xs font-medium px-2 py-1 bg-green-100 text-green-700 rounded-full"><%= product.qtyAvailable || product.stock_count || product.inStock %> Left</span>
+                        </div>
+                    </div>
+                </div>
+            <% }); %>
+        </div>
+    </div>
+</body>
+</html>

@@ -6,15 +6,19 @@ import { registerTools } from './mcp/tools';
 import { getLedgerEntries } from './services/ledger';
 import db from './db/sqlite';
 import dotenv from 'dotenv';
+import { connectRedis } from './services/redis.js';
+import { rateLimiter } from './middleware/rateLimit.js';
+
 dotenv.config();
 
 const app = express();
 app.use(cors());
+app.use(express.json());
+app.use(rateLimiter);
 
 const transports = new Map<string, SSEServerTransport>();
 
 // --- Cryptographic Mandates (Human-in-the-Loop) ---
-import db from './db/sqlite.js';
 
 app.get('/api/mandates/:token', (req, res) => {
   const mandate = db.prepare('SELECT * FROM mandates WHERE token = ?').get(req.params.token) as any;
@@ -47,10 +51,20 @@ app.post('/api/mandates/:token/approve', async (req, res) => {
     
     db.prepare('UPDATE mandates SET approved = 1, razorpay_link = ? WHERE token = ?').run(plink.short_url, mandate.token);
 
-    // 2. Fire webhook to merchant to reduce stock (Zero-Click Simulation)
-    await submitOrderWebhook(mandate.merchant_id, mandate.items.map((i: any) => ({ sku: i.sku, qty: i.quantity })), mandate.cart_token);
+    // Simulate the user taking 10 seconds to fill out their credit card on Razorpay
+    setTimeout(async () => {
+      try {
+        // 2. Fire webhook to merchant to reduce stock (Zero-Click Simulation)
+        await submitOrderWebhook(mandate.merchant_id, mandate.items.map((i: any) => ({ sku: i.sku, qty: i.quantity })), mandate.cart_token);
 
-    logAction('human_user', 'approve_mandate', 'Human approved cryptographic mandate', 'PASS', { token: mandate.token, plink: plink.short_url }, mandate.merchant_id);
+        logAction('human_user', 'approve_mandate', 'Human approved cryptographic mandate and completed payment', 'PASS', { token: mandate.token, plink: plink.short_url }, mandate.merchant_id);
+
+        // Push SSE notification to Claude so it instantly knows the payment succeeded
+        sendSseNotification(`URGENT UPDATE: The user has successfully completed the payment for cart ${mandate.cart_token} via Razorpay! The order ID is: ${mandate.cart_token}.`);
+      } catch (e) {
+        console.error('Error in delayed payment fulfillment:', e);
+      }
+    }, 10000);
 
     res.json({ success: true, link: plink.short_url });
   } catch (err: any) {
@@ -60,10 +74,38 @@ app.post('/api/mandates/:token/approve', async (req, res) => {
 });
 // --------------------------------------------------
 
+// --- Webhooks for Order Tracking ---
+app.post('/api/webhooks/order-update', (req, res) => {
+  const { orderId, status, trackingNumber } = req.body;
+  if (!orderId) return res.status(400).json({ error: 'Missing orderId' });
+
+  let msg = `URGENT UPDATE: Order ${orderId} status changed to: ${status}.`;
+  if (trackingNumber) {
+    msg += ` Tracking Number: ${trackingNumber}`;
+  }
+  
+  sendSseNotification(msg);
+  res.json({ success: true });
+});
+// --------------------------------------------------
+
 // Handle Gemini's HEAD request for reachability check
 app.head('/mcp/sse', (req, res) => {
   res.status(200).end();
 });
+
+let activeMcpServer: McpServer | null = null;
+
+export function sendSseNotification(message: string) {
+  if (activeMcpServer) {
+    try {
+      activeMcpServer.server.sendLoggingMessage({ level: 'info', data: message });
+      console.log('Push notification sent to AI:', message);
+    } catch (e) {
+      console.error('Failed to send SSE notification', e);
+    }
+  }
+}
 
 app.get('/mcp/sse', async (req, res) => {
   console.log(`[GET] New MCP connection initializing.`);
@@ -72,6 +114,7 @@ app.get('/mcp/sse', async (req, res) => {
     name: 'Agora Gateway',
     version: '2.0.0'
   });
+  activeMcpServer = mcpServer;
   registerTools(mcpServer, 'agent_beta_01');
   
   // Provide the BASE url. The SDK automatically appends ?sessionId=UUID
@@ -138,7 +181,13 @@ if (process.argv.includes('--stdio')) {
   });
 } else {
   const PORT = process.env.PORT || 3000;
-  app.listen(PORT, () => {
-    console.log(`Agora Gateway running on port ${PORT} (SSE Mode)`);
+  app.listen(PORT, async () => {
+    try {
+      await connectRedis();
+    } catch (e) {
+      console.error('Failed to connect to Redis on startup');
+    }
+    console.log(`Agora Gateway running on port ${PORT}`);
+    console.log(`MCP SSE Endpoint available at http://localhost:${PORT}/mcp/sse`);
   });
 }

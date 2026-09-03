@@ -31,7 +31,8 @@ const merchants = [
       name: 'title',
       price: 'retailPrice',
       stock: 'qtyAvailable',
-      description: 'details'
+      description: 'details',
+      image: 'imageUrl'
     },
     upsell_rules: [
       {
@@ -57,7 +58,8 @@ const merchants = [
       sku: 'slug',
       name: 'name',
       price: 'cost',
-      stock: 'stock_count'
+      stock: 'stock_count',
+      image: 'image'
     }
   },
   {
@@ -75,8 +77,37 @@ const merchants = [
       sku: 'uuid',
       name: 'cardName',
       price: 'usdPrice',
-      stock: 'inStock'
+      stock: 'inStock',
+      image: 'image'
     }
+  },
+  {
+    id: 'store_electronics',
+    name: 'Agora Electronics',
+    description: 'General electronics, PlayStations, Xbox, controllers, and video games.',
+    categories: 'electronics gaming playstation xbox ps5 games console',
+    baseUrl: 'http://localhost:4004',
+    endpoints: {
+      search: '/api/v1/items?q={{query}}',
+      details: '/api/v1/items/{{sku}}',
+      order_webhook: '/api/v1/checkout'
+    },
+    fields: {
+      sku: 'id',
+      name: 'title',
+      price: 'retailPrice',
+      stock: 'qtyAvailable',
+      description: 'details',
+      image: 'imageUrl'
+    },
+    upsell_rules: [
+      {
+        trigger_category: 'gaming console',
+        suggested_sku: 'ps5-controller',
+        reason: 'Extra DualSense Controller (For local multiplayer)',
+        discount_percent: 15
+      }
+    ]
   }
 ];
 

@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title><%= storeName %> Admin</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-900 text-slate-100 p-8 font-sans">
+    <div class="max-w-6xl mx-auto">
+        <div class="flex justify-between items-center mb-8">
+            <h1 class="text-3xl font-bold"><%= storeName %> <span class="text-indigo-400">Admin Dashboard</span></h1>
+            <a href="/" class="text-sm text-slate-400 hover:text-white">&larr; Back to Store</a>
+        </div>
+        
+        <div class="bg-slate-800 rounded-xl shadow-xl border border-slate-700 overflow-hidden">
+            <table class="w-full text-left">
+                <thead class="bg-slate-750 border-b border-slate-700">
+                    <tr>
+                        <th class="p-5 text-sm font-semibold text-slate-300">Order ID</th>
+                        <th class="p-5 text-sm font-semibold text-slate-300">Items</th>
+                        <th class="p-5 text-sm font-semibold text-slate-300">Status</th>
+                        <th class="p-5 text-sm font-semibold text-slate-300 text-right">Actions</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-700/50">
+                    <% if (orders && orders.length > 0) { %>
+                        <% orders.forEach(function(order) { %>
+                            <tr class="hover:bg-slate-750/50 transition">
+                                <td class="p-5 font-mono text-sm text-indigo-300"><%= order.id || order.orderId %></td>
+                                <td class="p-5 text-sm text-slate-300">
+                                    <ul class="list-disc list-inside">
+                                    <% (order.items || []).forEach(function(item) { %>
+                                        <li><%= item.qty %>x <%= item.sku || item.id %></li>
+                                    <% }); %>
+                                    </ul>
+                                </td>
+                                <td class="p-5">
+                                    <% if (order.status === 'refund_requested') { %>
+                                        <span class="px-3 py-1 rounded-full bg-red-500/20 text-red-400 text-xs font-medium border border-red-500/30">Refund Requested</span>
+                                    <% } else if (order.status === 'shipped') { %>
+                                        <span class="px-3 py-1 rounded-full bg-green-500/20 text-green-400 text-xs font-medium border border-green-500/30">Shipped</span>
+                                    <% } else { %>
+                                        <span class="px-3 py-1 rounded-full bg-yellow-500/20 text-yellow-400 text-xs font-medium border border-yellow-500/30">Processing</span>
+                                    <% } %>
+                                </td>
+                                <td class="p-5 text-right space-x-2">
+                                    <% if (order.status === 'refund_requested') { %>
+                                        <form method="POST" action="/admin/refund" class="inline">
+                                            <input type="hidden" name="orderId" value="<%= order.id || order.orderId %>">
+                                            <button type="submit" class="bg-red-600 hover:bg-red-500 px-4 py-2 rounded-lg text-sm font-medium shadow transition">Approve Refund</button>
+                                        </form>
+                                    <% } else if (order.status !== 'shipped') { %>
+                                        <form method="POST" action="/admin/ship" class="inline">
+                                            <input type="hidden" name="orderId" value="<%= order.id || order.orderId %>">
+                                            <button type="submit" class="bg-indigo-600 hover:bg-indigo-500 px-4 py-2 rounded-lg text-sm font-medium shadow transition">Ship Order</button>
+                                        </form>
+                                    <% } %>
+                                </td>
+                            </tr>
+                        <% }); %>
+                    <% } else { %>
+                        <tr>
+                            <td colspan="4" class="p-12 text-center text-slate-500">No active orders found</td>
+                        </tr>
+                    <% } %>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</body>
+</html>

@@ -1,4 +1,5 @@
-import db from '../db/sqlite';
+import db from '../db/sqlite.js';
+import redisClient from './redis.js';
 
 export async function searchNetwork(query: string) {
   // 1. Semantic Router using FTS5 (BM25 ranking)
@@ -15,7 +16,11 @@ export async function searchNetwork(query: string) {
       ORDER BY rank
     `);
     // Format query for FTS (basic OR matching for words)
-    const ftsQuery = query.split(' ').map(w => w.trim()).filter(w => w).join(' OR ');
+    const ftsQuery = query.split(' ')
+      .map(w => w.trim())
+      .filter(w => w)
+      .map(w => `"${w.replace(/"/g, '""')}"`)
+      .join(' OR ');
     merchants = stmt.all(ftsQuery);
     
     // Fallback if FTS yields nothing (e.g. query is a specific product name not in merchant description)
@@ -63,9 +68,10 @@ export async function searchNetwork(query: string) {
           merchant_name: merchant.name,
           sku: String(item[fields.sku]),
           name: item[fields.name],
-          price_cents: Number(item[fields.price]),
+          price_paise: Number(item[fields.price]),
           stock: Number(item[fields.stock]),
-          description: fields.description ? item[fields.description] : undefined
+          description: fields.description ? item[fields.description] : undefined,
+          image_url: fields.image ? item[fields.image] : undefined
         });
       }
     } catch (e) {
@@ -77,8 +83,22 @@ export async function searchNetwork(query: string) {
 }
 
 export async function getProductDetails(merchantId: string, sku: string) {
+  // Strip merchant prefix if the AI passed the full agora_sku
+  sku = sku.replace(`${merchantId}::`, '');
+  
   const merchant = getMerchant(merchantId);
   if (!merchant) throw new Error('Merchant not found');
+
+  const cacheKey = `stock:${merchantId}:${sku}`;
+  
+  try {
+    const cached = await redisClient.get(cacheKey);
+    if (cached) {
+      return JSON.parse(cached);
+    }
+  } catch (e) {
+    console.error('Redis cache error:', e);
+  }
 
   const endpoints = JSON.parse(merchant.endpoints_json);
   const fields = JSON.parse(merchant.fields_mapping_json);
@@ -104,16 +124,26 @@ export async function getProductDetails(merchantId: string, sku: string) {
 
     if (!data || data.error) return null;
 
-    return {
+    const result = {
       agora_sku: `${merchant.id}::${data[fields.sku]}`,
       merchant_id: merchant.id,
       merchant_name: merchant.name,
       sku: String(data[fields.sku]),
       name: data[fields.name],
-      price_cents: Number(data[fields.price]),
+      price_paise: Number(data[fields.price]),
       stock: Number(data[fields.stock]),
-      description: fields.description ? data[fields.description] : undefined
+      description: fields.description ? data[fields.description] : undefined,
+      image_url: fields.image ? data[fields.image] : undefined
     };
+
+    // Cache the result for 5 seconds to prevent DDoS via AI loop
+    try {
+      await redisClient.setEx(cacheKey, 5, JSON.stringify(result));
+    } catch (e) {
+      console.error('Redis cache set error:', e);
+    }
+
+    return result;
 
   } catch (e) {
     console.error(`[Router] Error getting details for ${sku} from ${merchant.id}:`, e);
@@ -122,6 +152,9 @@ export async function getProductDetails(merchantId: string, sku: string) {
 }
 
 export async function submitOrderWebhook(merchantId: string, items: any[], cartToken: string) {
+  // Strip merchant prefix if the AI passed the full agora_sku
+  items = items.map(i => ({ ...i, sku: i.sku.replace(`${merchantId}::`, '') }));
+
   const merchant = getMerchant(merchantId);
   if (!merchant) throw new Error('Merchant not found');
   
@@ -135,6 +168,8 @@ export async function submitOrderWebhook(merchantId: string, items: any[], cartT
     payload = { transactionRef: cartToken, cart: items.map(i => ({ product_slug: i.sku, count: i.qty })) };
   } else if (merchantId === 'store_tcg') {
     payload = { purchaseData: { orderId: cartToken, items: items.map(i => ({ uuid: i.sku, qty: i.qty })) } };
+  } else if (merchantId === 'store_electronics') {
+    payload = { orderId: cartToken, items: items.map(i => ({ id: i.sku, qty: i.qty })) };
   }
 
   const url = `${merchant.base_url}${endpoints.order_webhook}`;
@@ -149,6 +184,37 @@ export async function submitOrderWebhook(merchantId: string, items: any[], cartT
     throw new Error(`Merchant Webhook Failed: ${res.status} - ${txt}`);
   }
   
+  return await res.json();
+}
+
+export async function submitRefundWebhook(merchantId: string, cartToken: string) {
+  const merchant = getMerchant(merchantId);
+  if (!merchant) throw new Error('Merchant not found');
+  
+  // For the hackathon dummy stores, they all listen for refunds on /api/v1/refund
+  // In a real system this would be dynamic via endpoints_json
+  const url = `${merchant.base_url}/api/v1/refund`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ orderId: cartToken })
+  });
+
+  if (!res.ok) {
+    const txt = await res.text();
+    throw new Error(`Merchant Refund Webhook Failed: ${res.status} - ${txt}`);
+  }
+  
+  return await res.json();
+}
+
+export async function trackOrder(merchantId: string, orderId: string) {
+  const merchant = getMerchant(merchantId);
+  if (!merchant) throw new Error('Merchant not found');
+  
+  // Hardcoded for hackathon dummy stores
+  const res = await fetch(`${merchant.base_url}/api/v1/orders/${orderId}`);
+  if (!res.ok) throw new Error('Order not found at merchant');
   return await res.json();
 }
 

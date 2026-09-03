@@ -1,5 +1,7 @@
 const express = require('express');
 const cors = require('cors');
+const fs = require('fs');
+const path = require('path');
 const app = express();
 app.use(cors());
 app.use(express.json());
@@ -8,8 +10,6 @@ app.use(express.static('public'));
 app.set('view engine', 'ejs');
 app.set('views', __dirname + '/views');
 
-const fs = require('fs');
-const path = require('path');
 const DB_FILE = path.join(__dirname, 'orders.json');
 
 let orders = [];
@@ -25,49 +25,43 @@ function saveOrders() {
   fs.writeFileSync(DB_FILE, JSON.stringify(orders, null, 2));
 }
 
-// Independent Inventory (Audio Store) - Prices in INR
+// Independent Inventory (Electronics Store) - Prices in INR
 const inventory = {
-  'sony-xm5': { title: 'Sony WH-1000XM5 Headphones', retailPrice: 3499000, qtyAvailable: 15, details: 'Industry leading noise cancellation', imageUrl: 'https://images.unsplash.com/photo-1618366712010-f4ae9c647dcb?w=500&q=80' },
-  'bose-qc-ultra': { title: 'Bose QuietComfort Ultra Headphones', retailPrice: 3590000, qtyAvailable: 8, details: 'World-class noise cancellation and spatial audio', imageUrl: 'https://images.unsplash.com/photo-1546435770-a3e426bf472b?w=500&q=80' },
-  'sennheiser-m4': { title: 'Sennheiser Momentum 4 Headphones', retailPrice: 2999000, qtyAvailable: 12, details: 'Audiophile-grade sound with 60h battery life', imageUrl: 'https://images.unsplash.com/photo-1590658268037-6bf12165a8df?w=500&q=80' },
-  'sony-xm5-cable': { title: 'Audiophile Braided Cable', retailPrice: 149900, qtyAvailable: 50, details: 'High-quality braided cable for zero latency', imageUrl: '/images/braided_cable.jpg' },
-  'shure-sm7b': { title: 'Shure SM7B Vocal Microphone', retailPrice: 3990000, qtyAvailable: 4, details: 'The standard for podcasting', imageUrl: '/images/shure_sm7b.jpg' }
+  'ps5-disc': { title: 'PlayStation 5 Console (Disc Edition)', retailPrice: 5499000, qtyAvailable: 5, details: 'Next-gen gaming console with ultra-high speed SSD', imageUrl: 'https://images.unsplash.com/photo-1606813907291-d86efa9b94db?w=500&q=80' },
+  'ps5-controller': { title: 'DualSense Wireless Controller', retailPrice: 599000, qtyAvailable: 20, details: 'Haptic feedback and adaptive triggers', imageUrl: 'https://images.unsplash.com/photo-1622297845775-5ff3fef71d13?w=500&q=80' },
+  'xbox-series-x': { title: 'Xbox Series X', retailPrice: 5599000, qtyAvailable: 3, details: 'The fastest, most powerful Xbox ever', imageUrl: '/images/xbox_series_x.jpg' },
+  'spiderman-2-ps5': { title: 'Marvels Spider-Man 2 (PS5)', retailPrice: 499900, qtyAvailable: 30, details: 'Swing, jump and utilize the new Web Wings', imageUrl: '/images/spiderman_2_ps5.jpg' }
 };
 
-// UI Routes
 app.get('/', (req, res) => {
-  res.render('index', { storeName: 'CyberDyne Audio', products: Object.entries(inventory).map(([id, p]) => ({id, ...p})) });
+  res.render('index', { storeName: 'Agora Electronics', products: Object.entries(inventory).map(([id, p]) => ({id, ...p})) });
 });
 
 app.get('/admin', (req, res) => {
-  res.render('admin', { storeName: 'CyberDyne Audio', orders });
+  res.render('admin', { storeName: 'Agora Electronics', orders });
 });
 
-// Store A: Uses /api/v1/items
+// Store Electronics: Uses /api/v1/items
 app.get('/api/v1/items', (req, res) => {
   const { q } = req.query;
   const items = Object.entries(inventory).map(([id, data]) => ({ id, ...data }));
   if (q) {
-    const qLower = q.toLowerCase();
-    const filtered = items.filter(i => 
-      i.title.toLowerCase().includes(qLower) || 
-      i.details.toLowerCase().includes(qLower)
-    );
+    const filtered = items.filter(i => i.title.toLowerCase().includes(q.toLowerCase()));
     return res.json(filtered);
   }
   res.json(items);
 });
 
-// Store A: Details endpoint /api/v1/items/:id
+// Store Electronics: Details endpoint /api/v1/items/:id
 app.get('/api/v1/items/:id', (req, res) => {
   const item = inventory[req.params.id];
   if (item) res.json({ id: req.params.id, ...item });
   else res.status(404).json({ error: 'Not found' });
 });
 
-// Store A: Webhook for Orders
+// Store Electronics: Webhook for Orders
 app.post('/api/v1/checkout', (req, res) => {
-  const { items, orderId } = req.body; // Items array [{ id, qty }]
+  const { items, orderId } = req.body;
   
   for (const item of items) {
     if (!inventory[item.id] || inventory[item.id].qtyAvailable < item.qty) {
@@ -75,14 +69,13 @@ app.post('/api/v1/checkout', (req, res) => {
     }
   }
 
-  // Decrement inventory
   items.forEach(item => {
     inventory[item.id].qtyAvailable -= item.qty;
   });
 
   orders.unshift({ id: orderId, items, status: 'processing' });
   saveOrders();
-  console.log(`[Audio Store] Order ${orderId} received. Fulfilled ${items.length} items.`);
+  console.log(`[Electronics Store] Order ${orderId} received. Fulfilled ${items.length} items.`);
   res.json({ success: true, orderId });
 });
 
@@ -93,7 +86,7 @@ app.post('/admin/ship', async (req, res) => {
   
   if (order && order.status === 'processing') {
     order.status = 'shipped';
-    const trackingNumber = 'CYBERDYNE' + Math.floor(Math.random() * 1000000);
+    const trackingNumber = 'ELEC' + Math.floor(Math.random() * 1000000);
     order.trackingNumber = trackingNumber;
     
     try {
@@ -102,16 +95,16 @@ app.post('/admin/ship', async (req, res) => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ orderId, status: 'shipped', trackingNumber })
       });
-      console.log(`[Audio Store] Sent shipped webhook for ${orderId}`);
+      console.log(`[Electronics Store] Sent shipped webhook for ${orderId}`);
     } catch (e) {
-      console.error(`[Audio Store] Failed to send shipped webhook for ${orderId}`);
+      console.error(`[Electronics Store] Failed to send shipped webhook for ${orderId}`);
     }
     saveOrders();
   }
   res.redirect('/admin');
 });
 
-// Store A: Webhook for Refunds
+// Store Electronics: Webhook for Refunds
 app.post('/api/v1/refund', (req, res) => {
   const { orderId } = req.body;
   const order = orders.find(o => o.id === orderId);
@@ -129,7 +122,7 @@ app.post('/api/v1/refund', (req, res) => {
   });
   saveOrders();
   
-  console.log(`[Audio Store] Processed refund for order ${orderId}`);
+  console.log(`[Electronics Store] Processed refund for order ${orderId}`);
   res.json({ success: true });
 });
 
@@ -143,4 +136,4 @@ app.get('/api/v1/orders/:id', (req, res) => {
   }
 });
 
-app.listen(4001, () => console.log('Audio Store running on port 4001'));
+app.listen(4004, () => console.log('Electronics Store running on port 4004'));

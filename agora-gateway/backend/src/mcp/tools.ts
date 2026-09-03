@@ -1,6 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { searchNetwork, getProductDetails, submitOrderWebhook } from '../services/router';
+import { searchNetwork, getProductDetails, submitOrderWebhook, submitRefundWebhook, trackOrder } from '../services/router';
 import { createPaymentLink } from '../services/razorpay';
 import { logAction } from '../services/ledger';
 import crypto from 'crypto';
@@ -17,18 +17,34 @@ export function registerTools(server: McpServer, agentId: string) {
     },
     async ({ query }) => {
       const results = await searchNetwork(query);
-      logAction(agentId, 'search_network', `Searched network for: ${query}`, 'PASS', { query, resultsFound: results.length });
-      return { content: [{ type: 'text', text: JSON.stringify(results, null, 2) }] };
+      logAction(agentId, 'search_network', `Searched for ${query}`, 'PASS', { resultsCount: results.length });
+      
+      // Format the results for Claude with Markdown Images!
+      let formattedText = `Found ${results.length} results for "${query}":\n\n`;
+      for (const item of results) {
+        formattedText += `### ${item.name} (${item.merchant_name})\n`;
+        if (item.image_url) {
+          formattedText += `![${item.name}](${item.image_url})\n`;
+        }
+        formattedText += `- **SKU**: ${item.agora_sku}\n`;
+        formattedText += `- **Merchant ID**: ${item.merchant_id} (Use this EXACT ID for other tools)\n`;
+        formattedText += `- **Price**: ₹${(item.price_paise / 100).toFixed(2)} (Paise: ${item.price_paise})\n`;
+        formattedText += `- **Stock**: ${item.stock}\n`;
+        if (item.description) formattedText += `- **Description**: ${item.description}\n`;
+        formattedText += `\n---\n`;
+      }
+
+      return { content: [{ type: 'text', text: formattedText }] };
     }
   );
 
   // 2. get_product_details
   server.tool(
     'get_product_details',
-    'Get specific details and live inventory for a product from a specific merchant.',
+    'Get detailed information about a specific product. You MUST use the exact SKU and Merchant ID returned by search_network.',
     {
-      merchant_id: z.string().describe('Merchant ID'),
-      sku: z.string().describe('Merchant-specific Product SKU')
+      merchant_id: z.string().describe('The exact Merchant ID string returned by search_network (e.g., "store_audio")'),
+      sku: z.string().describe('The exact SKU string returned by search_network')
     },
     async ({ merchant_id, sku }) => {
       const product = await getProductDetails(merchant_id, sku);
@@ -48,7 +64,7 @@ export function registerTools(server: McpServer, agentId: string) {
     {
       merchant_id: z.string(),
       items: z.array(z.object({ sku: z.string(), quantity: z.number() })),
-      shipping_address: z.string().optional()
+      shipping_address: z.string().describe('Mandatory shipping address')
     },
     async ({ merchant_id, items, shipping_address }) => {
       let subtotal = 0;
@@ -63,8 +79,8 @@ export function registerTools(server: McpServer, agentId: string) {
           return { content: [{ type: 'text', text: `Product ${reqItem.sku} not found or insufficient stock.` }] };
         }
         
-        let itemPriceCents = product.price_cents;
-        subtotal += itemPriceCents * reqItem.quantity;
+        let itemPricePaise = product.price_paise;
+        subtotal += itemPricePaise * reqItem.quantity;
       }
 
       // Upsell Engine Check
@@ -91,16 +107,13 @@ export function registerTools(server: McpServer, agentId: string) {
 
             if (triggerFound) {
               if (bundledSuggestedFound) {
-                // Apply discount to the suggested item!
-                const p = await getProductDetails(merchant_id, rule.suggested_sku);
-                if (p) {
-                   const discountAmount = Math.floor(p.price_cents * (rule.discount_percent / 100));
-                   // Find how many suggested items are in cart to discount them
-                   const bundledQty = items.find(i => i.sku === rule.suggested_sku)?.quantity || 1;
-                   subtotal -= (discountAmount * bundledQty); 
-                   discountApplied = true;
-                }
-              } else {
+              const suggestedProduct = await getProductDetails(merchant_id, rule.suggested_sku);
+              if (suggestedProduct) {
+                const discountAmount = (suggestedProduct.price_paise * (rule.discount_percent / 100));
+                subtotal -= discountAmount;
+                discountApplied = true;
+              }
+            } else {
                 recommended_addon = {
                   sku: rule.suggested_sku,
                   reason: rule.reason,
@@ -112,22 +125,23 @@ export function registerTools(server: McpServer, agentId: string) {
           }
         }
       } catch (e) {
-        console.error('Failed to parse upsell rules', e);
+        console.error('Upsell check error:', e);
       }
 
-      const tax = Math.floor(subtotal * 0.18); // 18% tax
-      const shipping = 5000; // Flat 50.00
+      const tax = Math.round(subtotal * 0.18); // 18% tax
+      const shipping = 50000; // Flat ₹500.00
       const total = subtotal + tax + shipping;
 
-      const token = crypto.randomUUID();
-
-      logAction(agentId, 'lock_cart_and_quote', `Quoted cart with ${items.length} items`, 'PASS', { subtotal, tax, shipping, total, token, upsell: recommended_addon ? 'Triggered' : (discountApplied ? 'Applied' : 'None') }, merchant_id);
+      const token = crypto.randomBytes(8).toString('hex');
+      logAction(agentId, 'lock_cart_and_quote', `Locked cart ${token}`, 'PASS', { items, total }, merchant_id);
 
       const responsePayload: any = {
         cart_token: token,
         merchant_id,
+        shipping_address,
         locked_items: items,
-        breakdown: { subtotal, tax, shipping, total }
+        breakdown_paise: { subtotal, tax, shipping, total },
+        total_inr: `₹${(total / 100).toFixed(2)}`
       };
 
       if (recommended_addon) {
@@ -151,50 +165,62 @@ export function registerTools(server: McpServer, agentId: string) {
       cart_token: z.string(),
       merchant_id: z.string(),
       items: z.array(z.object({ sku: z.string(), quantity: z.number() })),
-      quoted_total: z.number(),
-      max_authorized_budget: z.number().describe('Budget limit in cents')
+      quoted_total_paise: z.number(),
+      shipping_address: z.string().describe('Mandatory shipping address'),
+      max_authorized_budget_paise: z.number().describe('Budget limit in paise')
     },
-    async ({ cart_token, merchant_id, items, quoted_total, max_authorized_budget }) => {
-      // Policy 1: Budget Limit
-      if (quoted_total > max_authorized_budget) {
-        logAction(agentId, 'execute_settlement', `Settlement blocked: Total ${quoted_total} exceeds budget ${max_authorized_budget}`, 'FAIL_BUDGET', { quoted_total, max_authorized_budget }, merchant_id);
-        return { content: [{ type: 'text', text: `ERROR: Budget overrun. Transaction blocked.` }] };
-      }
-
-      // Policy 2: Live stock ping (Inventory Race check)
-      for (const reqItem of items) {
-        const liveProduct = await getProductDetails(merchant_id, reqItem.sku);
-        if (!liveProduct || liveProduct.stock < reqItem.quantity) {
-          logAction(agentId, 'execute_settlement', `Settlement blocked: Race condition. ${reqItem.sku} stocked out.`, 'FAIL_INVENTORY', { requested: reqItem.quantity, available: liveProduct?.stock }, merchant_id);
-          return { content: [{ type: 'text', text: `ERROR: Inventory race condition. Stock for ${reqItem.sku} no longer available.` }] };
+    async ({ cart_token, merchant_id, items, quoted_total_paise, shipping_address, max_authorized_budget_paise }) => {
+      try {
+        // Policy 1: Budget Limit
+        if (quoted_total_paise > max_authorized_budget_paise) {
+          logAction(agentId, 'execute_settlement', `Settlement blocked: Total ${quoted_total_paise} exceeds budget ${max_authorized_budget_paise}`, 'FAIL_BUDGET', { quoted_total_paise, max_authorized_budget_paise }, merchant_id);
+          return { content: [{ type: 'text', text: `ERROR: Budget overrun. Transaction blocked.` }] };
         }
+
+        // Policy 2: Live stock ping (Inventory Race check)
+        for (const reqItem of items) {
+          const liveProduct = await getProductDetails(merchant_id, reqItem.sku);
+          if (!liveProduct || liveProduct.stock < reqItem.quantity) {
+            logAction(agentId, 'execute_settlement', `Settlement blocked: Race condition. ${reqItem.sku} stocked out.`, 'FAIL_INVENTORY', { requested: reqItem.quantity, available: liveProduct?.stock }, merchant_id);
+            return { content: [{ type: 'text', text: `ERROR: Inventory race condition. Stock for ${reqItem.sku} no longer available.` }] };
+          }
+        }
+
+        // Policy 3: Agent Quota Limits (Sybil Resistance)
+        const pendingCountRow = db.prepare('SELECT COUNT(*) as count FROM mandates WHERE approved = 0').get() as { count: number };
+        if (pendingCountRow.count >= 3) {
+          logAction(agentId, 'execute_settlement', `Settlement blocked: Agent quota exceeded.`, 'FAIL_QUOTA', { pending_count: pendingCountRow.count }, merchant_id);
+          return { content: [{ type: 'text', text: `ERROR: Quota exceeded. You already have 3 pending cryptographic mandates waiting for human approval. Please wait for the user to approve them before creating more.` }] };
+        }
+
+        // Generate Cryptographic Mandate Token
+        const mandateToken = crypto.randomBytes(16).toString('hex');
+        const expiresAt = Date.now() + 5 * 60 * 1000; // 5 minutes
+
+        db.prepare(`
+          INSERT INTO mandates (token, cart_token, merchant_id, items_json, quoted_total, expires_at, approved, shipping_address)
+          VALUES (?, ?, ?, ?, ?, ?, 0, ?)
+        `).run(mandateToken, cart_token, merchant_id, JSON.stringify(items), quoted_total_paise, expiresAt, shipping_address);
+
+        logAction(agentId, 'execute_settlement', `Generated Cryptographic Mandate for approval`, 'PASS', { mandateToken, expiresAt }, merchant_id);
+
+        const approval_url = `http://localhost:5173/mandate/${mandateToken}`;
+
+        return { 
+          content: [{ 
+            type: 'text', 
+            text: JSON.stringify({
+              error: "HTTP 402 Payment Required",
+              message: "A Cryptographic Mandate has been generated. The human must approve this transaction before settlement can proceed.",
+              approval_url: approval_url,
+              expires_at: new Date(expiresAt).toISOString()
+            }, null, 2) 
+          }] 
+        };
+      } catch (e: any) {
+        console.error('Execute Settlement Error:', e);
+        return { content: [{ type: 'text', text: `INTERNAL ERROR in execute_settlement: ${e.message}\n${e.stack}` }] };
       }
-
-      // Generate Cryptographic Mandate Token
-      const mandateToken = crypto.randomBytes(16).toString('hex');
-      const expiresAt = Date.now() + 5 * 60 * 1000; // 5 minutes
-
-      db.prepare(`
-        INSERT INTO mandates (token, cart_token, merchant_id, items_json, quoted_total, expires_at, approved)
-        VALUES (?, ?, ?, ?, ?, ?, 0)
-      `).run(mandateToken, cart_token, merchant_id, JSON.stringify(items), quoted_total, expiresAt);
-
-      logAction(agentId, 'execute_settlement', `Generated Cryptographic Mandate for approval`, 'PASS', { mandateToken, expiresAt }, merchant_id);
-
-      const approval_url = `http://localhost:5173/mandate/${mandateToken}`;
-
-      // Return HTTP 402 style response
-      return { 
-        content: [{ 
-          type: 'text', 
-          text: JSON.stringify({
-            status: "402 Payment Required",
-            action_required: "MANDATE_APPROVAL",
-            approval_url: approval_url,
-            message: `Please provide this link to the user to securely approve the transaction on the Agora Dashboard. Once approved, use the check_mandate_status tool.`
-          }, null, 2) 
-        }] 
-      };
     }
   );
 
@@ -232,6 +258,46 @@ export function registerTools(server: McpServer, agentId: string) {
       logAction(agentId, 'check_mandate_status', `AI retrieved approved x402 envelope`, 'PASS', ap2Envelope, mandate.merchant_id);
 
       return { content: [{ type: 'text', text: JSON.stringify(ap2Envelope, null, 2) }] };
+    }
+  );
+
+  // 6. request_refund
+  server.tool(
+    'request_refund',
+    'Securely initiate a refund request for an order. Simulates the ledger entry and notifies the merchant.',
+    {
+      cart_token: z.string().describe('The Order ID / Cart Token to refund'),
+      merchant_id: z.string().describe('The merchant ID'),
+      reason: z.string().describe('Reason for refund')
+    },
+    async ({ cart_token, merchant_id, reason }) => {
+      try {
+        await submitRefundWebhook(merchant_id, cart_token);
+        logAction(agentId, 'request_refund', `Refund requested for ${cart_token}`, 'PASS', { reason }, merchant_id);
+        return { content: [{ type: 'text', text: `Refund successfully initiated for order ${cart_token}.` }] };
+      } catch (e: any) {
+        logAction(agentId, 'request_refund', `Refund failed for ${cart_token}`, 'FAIL', { error: e.message }, merchant_id);
+        return { content: [{ type: 'text', text: `Failed to initiate refund: ${e.message}` }] };
+      }
+    }
+  );
+
+  // 7. track_order
+  server.tool(
+    'track_order',
+    'Track the live status and shipping information of an order directly from the merchant.',
+    {
+      cart_token: z.string().describe('The Order ID / Cart Token to track'),
+      merchant_id: z.string().describe('The merchant ID')
+    },
+    async ({ cart_token, merchant_id }) => {
+      try {
+        const status = await trackOrder(merchant_id, cart_token);
+        logAction(agentId, 'track_order', `Tracked order ${cart_token}`, 'PASS', status, merchant_id);
+        return { content: [{ type: 'text', text: JSON.stringify(status, null, 2) }] };
+      } catch (e: any) {
+        return { content: [{ type: 'text', text: `Failed to track order: ${e.message}` }] };
+      }
     }
   );
 }
