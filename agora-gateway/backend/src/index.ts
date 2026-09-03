@@ -116,7 +116,55 @@ app.post('/api/webhooks/order-update', (req, res) => {
 });
 // --------------------------------------------------
 
-// Handle Gemini's HEAD request for reachability check
+// --- Merchant Onboarding & SMB Dashboard ---
+app.post('/api/merchants', (req, res) => {
+  try {
+    const { id, name, description, base_url, endpoints_json, fields_mapping_json, upsell_rules_json, is_smb, categories } = req.body;
+    
+    db.prepare(`
+      INSERT INTO merchants (id, name, description, base_url, endpoints_json, fields_mapping_json, upsell_rules_json, is_smb) 
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(id, name, description, base_url, JSON.stringify(endpoints_json), JSON.stringify(fields_mapping_json), upsell_rules_json ? JSON.stringify(upsell_rules_json) : null, is_smb ? 1 : 0);
+    
+    db.prepare(`
+      INSERT INTO merchant_fts (merchant_id, name, description, categories)
+      VALUES (?, ?, ?, ?)
+    `).run(id, name, description, categories || 'general');
+
+    res.json({ success: true });
+  } catch (err: any) {
+    console.error('Failed to onboard merchant:', err);
+    res.status(500).json({ error: 'Failed to onboard merchant: ' + err.message });
+  }
+});
+
+app.get('/api/smb/:merchantId/orders', (req, res) => {
+  const orders = db.prepare('SELECT * FROM smb_orders WHERE merchant_id = ? ORDER BY created_at DESC').all(req.params.merchantId);
+  const parsedOrders = orders.map((o: any) => ({ ...o, items: JSON.parse(o.items_json) }));
+  res.json({ success: true, orders: parsedOrders });
+});
+
+app.post('/api/smb/:merchantId/orders/:orderId/ship', (req, res) => {
+  const { trackingNumber } = req.body;
+  if (!trackingNumber) return res.status(400).json({ error: 'Missing trackingNumber' });
+  
+  const order = db.prepare('SELECT * FROM smb_orders WHERE id = ? AND merchant_id = ?').get(req.params.orderId, req.params.merchantId) as any;
+  if (!order) return res.status(404).json({ error: 'Order not found' });
+  
+  db.prepare('UPDATE smb_orders SET status = ?, tracking_number = ? WHERE id = ?').run('Shipped', trackingNumber, req.params.orderId);
+  
+  sendSseNotification(`URGENT UPDATE: Order ${req.params.orderId} from ${req.params.merchantId} has shipped! Tracking Number: ${trackingNumber}`);
+  res.json({ success: true });
+});
+
+app.post('/api/smb/:merchantId/orders/:orderId/refund', (req, res) => {
+  const order = db.prepare('SELECT * FROM smb_orders WHERE id = ? AND merchant_id = ?').get(req.params.orderId, req.params.merchantId) as any;
+  if (!order) return res.status(404).json({ error: 'Order not found' });
+  
+  db.prepare('UPDATE smb_orders SET status = ? WHERE id = ?').run('Refunded', req.params.orderId);
+  res.json({ success: true });
+});
+// --------------------------------------------------
 app.head('/mcp/sse', (req, res) => {
   res.status(200).end();
 });

@@ -15,7 +15,17 @@ db.exec(`
     base_url TEXT NOT NULL,
     endpoints_json TEXT NOT NULL,
     fields_mapping_json TEXT NOT NULL,
-    upsell_rules_json TEXT
+    upsell_rules_json TEXT,
+    is_smb INTEGER DEFAULT 0
+  );
+
+  CREATE TABLE IF NOT EXISTS smb_orders (
+    id TEXT PRIMARY KEY,
+    merchant_id TEXT NOT NULL,
+    items_json TEXT NOT NULL,
+    status TEXT DEFAULT 'Processing',
+    tracking_number TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
 
   -- Virtual table for semantic similarity routing (FTS5 BM25)

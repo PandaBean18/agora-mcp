@@ -57,7 +57,13 @@ export async function searchNetwork(query: string, merchantId?: string) {
         // Handle GET mapping
         const url = `${merchant.base_url}${endpoints.search.replace('{{query}}', encodeURIComponent(query))}`;
         const res = await fetch(url);
-        data = await res.json();
+        const text = await res.text();
+        try {
+          data = JSON.parse(text);
+        } catch (e) {
+          console.error(`[Router] Invalid JSON from ${merchant.id} at ${url}:`, text.substring(0, 100));
+          data = [];
+        }
       }
 
       // Standardize response
@@ -120,8 +126,10 @@ export async function getProductDetails(merchantId: string, sku: string) {
       let url = endpoints.details.replace('{{sku}}', encodeURIComponent(sku));
       const res = await fetch(`${merchant.base_url}${url}`);
       data = await res.json();
-      // Store B returns array for search, Store A returns object
-      if (Array.isArray(data)) data = data[0]; 
+      // Search array for matching sku if endpoint returns a list (e.g. SMB catalog)
+      if (Array.isArray(data)) {
+        data = data.find((item: any) => String(item[fields.sku]) === sku);
+      }
     }
 
     if (!data || data.error) return null;
@@ -160,6 +168,11 @@ export async function submitOrderWebhook(merchantId: string, items: any[], cartT
   const merchant = getMerchant(merchantId);
   if (!merchant) throw new Error('Merchant not found');
   
+  if (merchant.is_smb) {
+    db.prepare('INSERT INTO smb_orders (id, merchant_id, items_json) VALUES (?, ?, ?)').run(cartToken, merchantId, JSON.stringify(items));
+    return;
+  }
+  
   const endpoints = JSON.parse(merchant.endpoints_json);
   
   // Custom mapping based on the dummy stores we built
@@ -193,6 +206,11 @@ export async function submitRefundWebhook(merchantId: string, cartToken: string)
   const merchant = getMerchant(merchantId);
   if (!merchant) throw new Error('Merchant not found');
   
+  if (merchant.is_smb) {
+    db.prepare('UPDATE smb_orders SET status = ? WHERE id = ?').run('Refunded', cartToken);
+    return { success: true };
+  }
+  
   // For the hackathon dummy stores, they all listen for refunds on /api/v1/refund
   // In a real system this would be dynamic via endpoints_json
   const url = `${merchant.base_url}/api/v1/refund`;
@@ -213,6 +231,12 @@ export async function submitRefundWebhook(merchantId: string, cartToken: string)
 export async function trackOrder(merchantId: string, orderId: string) {
   const merchant = getMerchant(merchantId);
   if (!merchant) throw new Error('Merchant not found');
+  
+  if (merchant.is_smb) {
+    const order = db.prepare('SELECT * FROM smb_orders WHERE id = ?').get(orderId) as any;
+    if (!order) throw new Error('Order not found');
+    return { status: order.status, trackingNumber: order.tracking_number };
+  }
   
   // Hardcoded for hackathon dummy stores
   const res = await fetch(`${merchant.base_url}/api/v1/orders/${orderId}`);

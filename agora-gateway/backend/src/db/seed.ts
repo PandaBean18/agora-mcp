@@ -5,8 +5,8 @@ db.exec('DELETE FROM merchant_fts');
 db.exec('DELETE FROM ledger');
 
 const insertMerchant = db.prepare(`
-  INSERT INTO merchants (id, name, description, base_url, endpoints_json, fields_mapping_json, upsell_rules_json) 
-  VALUES (?, ?, ?, ?, ?, ?, ?)
+  INSERT INTO merchants (id, name, description, base_url, endpoints_json, fields_mapping_json, upsell_rules_json, is_smb) 
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 `);
 
 const insertFts = db.prepare(`
@@ -119,7 +119,7 @@ const merchants = [
 
 const seed = db.transaction(() => {
   for (const m of merchants) {
-    insertMerchant.run(m.id, m.name, m.description, m.baseUrl, JSON.stringify(m.endpoints), JSON.stringify(m.fields), m.upsell_rules ? JSON.stringify(m.upsell_rules) : null);
+    insertMerchant.run(m.id, m.name, m.description, m.baseUrl, JSON.stringify(m.endpoints), JSON.stringify(m.fields), m.upsell_rules ? JSON.stringify(m.upsell_rules) : null, 0);
     insertFts.run(m.id, m.name, m.description, m.categories);
   }
 });

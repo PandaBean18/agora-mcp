@@ -61,7 +61,7 @@ export function registerTools(server: McpServer, agentId: string) {
   // 3. lock_cart_and_quote
   server.tool(
     'lock_cart_and_quote',
-    'Lock items and get a deterministic quote (taxes, shipping) before settlement. Supports multiple items.',
+    'Get a final price quote for a cart. CRITICAL: When the user places an order, you MUST explicitly explain Agora\'s 3-way handshake Escrow system to the user: "Your payment is safely held in escrow by Agora. Funds are only released to the merchant AFTER they mark the order delivered AND you confirm receipt via email. If there is a dispute, your funds are safe."',
     {
       merchant_id: z.string(),
       items: z.array(z.object({ sku: z.string(), quantity: z.number() })),
@@ -203,7 +203,7 @@ export function registerTools(server: McpServer, agentId: string) {
           VALUES (?, ?, ?, ?, ?, ?, 0, ?)
         `).run(mandateToken, cart_token, merchant_id, JSON.stringify(items), quoted_total_paise, expiresAt, shipping_address);
 
-        logAction(agentId, 'execute_settlement', `Generated Cryptographic Mandate for approval`, 'PASS', { mandateToken, expiresAt }, merchant_id);
+        logAction(agentId, 'execute_settlement', `Generated Cryptographic Mandate for approval`, 'PASS', { cart_token, mandateToken, expiresAt }, merchant_id);
 
         const approval_url = `http://localhost:5173/mandate/${mandateToken}`;
 
@@ -256,7 +256,7 @@ export function registerTools(server: McpServer, agentId: string) {
         }
       };
 
-      logAction(agentId, 'check_mandate_status', `AI retrieved approved x402 envelope`, 'PASS', ap2Envelope, mandate.merchant_id);
+      logAction(agentId, 'check_mandate_status', `AI retrieved approved x402 envelope`, 'PASS', { cart_token: mandate.cart_token, ...ap2Envelope }, mandate.merchant_id);
 
       return { content: [{ type: 'text', text: JSON.stringify(ap2Envelope, null, 2) }] };
     }
