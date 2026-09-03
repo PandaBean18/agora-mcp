@@ -36,10 +36,16 @@ const merchants = [
     },
     upsell_rules: [
       {
-        trigger_category: 'Headphones',
+        trigger_category: 'Sony',
         suggested_sku: 'sony-xm5-cable',
         reason: 'Audiophile Braided Cable (Often bought together)',
         discount_percent: 10
+      },
+      {
+        trigger_category: 'Headphones',
+        suggested_sku: 'premium-aux-cable',
+        reason: 'Universal Premium Aux Cable (Often bought together)',
+        discount_percent: 15
       }
     ]
   },

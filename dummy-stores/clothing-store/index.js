@@ -11,6 +11,7 @@ app.set('view engine', 'ejs');
 app.set('views', __dirname + '/views');
 
 const DB_FILE = path.join(__dirname, 'orders.json');
+const INV_FILE = path.join(__dirname, 'inventory.json');
 
 let orders = [];
 if (fs.existsSync(DB_FILE)) {
@@ -21,16 +22,25 @@ if (fs.existsSync(DB_FILE)) {
   }
 }
 
-function saveOrders() {
-  fs.writeFileSync(DB_FILE, JSON.stringify(orders, null, 2));
+// Independent Inventory (Clothing Store) - Prices in INR
+let catalog = [
+  { slug: 'leather-jacket', name: 'Vegan Leather Jacket', price: 899900, stock_count: 5, imageUrl: '/images/leather_jacket.jpg' },
+  { slug: 'hoodie-black', name: 'Heavyweight Developer Hoodie', price: 349900, stock_count: 50, imageUrl: 'https://images.unsplash.com/photo-1556821840-3a63f95609a7?w=500&q=80' },
+  { slug: 'tshirt-white', name: 'Minimalist Cotton T-Shirt', price: 129900, stock_count: 100, imageUrl: 'https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=500&q=80' }
+];
+
+if (fs.existsSync(INV_FILE)) {
+  try {
+    catalog = JSON.parse(fs.readFileSync(INV_FILE, 'utf-8'));
+  } catch (e) {
+    console.error('Failed to load inventory', e);
+  }
 }
 
-// Independent Inventory (Clothing Store) - Prices in INR
-const catalog = [
-  { slug: 'vintage-leather-jacket', name: 'Vintage 90s Leather Jacket', cost: 1299900, stock_count: 2, image: '/images/leather_jacket.jpg' },
-  { slug: 'agora-hoodie', name: 'Agora Developer Hoodie', cost: 249900, stock_count: 50, image: 'https://images.unsplash.com/photo-1556821840-3a63f95609a7?w=500&q=80' },
-  { slug: 'agora-tee', name: 'Agora Logo T-Shirt', cost: 99900, stock_count: 150, image: 'https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=500&q=80' }
-];
+function saveState() {
+  fs.writeFileSync(DB_FILE, JSON.stringify(orders, null, 2));
+  fs.writeFileSync(INV_FILE, JSON.stringify(catalog, null, 2));
+}
 
 app.get('/', (req, res) => {
   res.render('index', { storeName: 'Agora Threads', products: catalog });
@@ -72,7 +82,7 @@ app.post('/store/orders/new', (req, res) => {
   });
 
   orders.unshift({ id: transactionRef, items: cart.map(i => ({ sku: i.product_slug, qty: i.count })), status: 'processing' });
-  saveOrders();
+  saveState();
   console.log(`[Clothing Store] Order ${transactionRef} received!`);
   res.json({ status: 'confirmed', transactionRef });
 });
@@ -97,7 +107,7 @@ app.post('/admin/ship', async (req, res) => {
     } catch (e) {
       console.error(`[Clothing Store] Failed to send shipped webhook for ${orderId}`);
     }
-    saveOrders();
+    saveState();
   }
   res.redirect('/admin');
 });
@@ -117,7 +127,7 @@ app.post('/api/v1/refund', (req, res) => {
     const product = catalog.find(p => p.slug === item.sku);
     if (product) product.stock_count += item.qty;
   });
-  saveOrders();
+  saveState();
   
   console.log(`[Clothing Store] Processed refund for order ${orderId}`);
   res.json({ success: true });

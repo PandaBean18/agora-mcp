@@ -11,6 +11,7 @@ app.set('views', __dirname + '/views');
 const fs = require('fs');
 const path = require('path');
 const DB_FILE = path.join(__dirname, 'orders.json');
+const INV_FILE = path.join(__dirname, 'inventory.json');
 
 let orders = [];
 if (fs.existsSync(DB_FILE)) {
@@ -21,18 +22,28 @@ if (fs.existsSync(DB_FILE)) {
   }
 }
 
-function saveOrders() {
-  fs.writeFileSync(DB_FILE, JSON.stringify(orders, null, 2));
-}
-
 // Independent Inventory (Audio Store) - Prices in INR
-const inventory = {
+let inventory = {
   'sony-xm5': { title: 'Sony WH-1000XM5 Headphones', retailPrice: 3499000, qtyAvailable: 15, details: 'Industry leading noise cancellation', imageUrl: 'https://images.unsplash.com/photo-1618366712010-f4ae9c647dcb?w=500&q=80' },
   'bose-qc-ultra': { title: 'Bose QuietComfort Ultra Headphones', retailPrice: 3590000, qtyAvailable: 8, details: 'World-class noise cancellation and spatial audio', imageUrl: 'https://images.unsplash.com/photo-1546435770-a3e426bf472b?w=500&q=80' },
   'sennheiser-m4': { title: 'Sennheiser Momentum 4 Headphones', retailPrice: 2999000, qtyAvailable: 12, details: 'Audiophile-grade sound with 60h battery life', imageUrl: 'https://images.unsplash.com/photo-1590658268037-6bf12165a8df?w=500&q=80' },
   'sony-xm5-cable': { title: 'Audiophile Braided Cable', retailPrice: 149900, qtyAvailable: 50, details: 'High-quality braided cable for zero latency', imageUrl: '/images/braided_cable.jpg' },
-  'shure-sm7b': { title: 'Shure SM7B Vocal Microphone', retailPrice: 3990000, qtyAvailable: 4, details: 'The standard for podcasting', imageUrl: '/images/shure_sm7b.jpg' }
+  'shure-sm7b': { title: 'Shure SM7B Vocal Microphone', retailPrice: 3990000, qtyAvailable: 4, details: 'The standard for podcasting', imageUrl: '/images/shure_sm7b.jpg' },
+  'premium-aux-cable': { title: 'Universal Premium Aux Cable', retailPrice: 99900, qtyAvailable: 100, details: 'Universal gold-plated aux cable for any headphones', imageUrl: '/images/braided_cable.jpg' }
 };
+
+if (fs.existsSync(INV_FILE)) {
+  try {
+    inventory = JSON.parse(fs.readFileSync(INV_FILE, 'utf-8'));
+  } catch (e) {
+    console.error('Failed to load inventory', e);
+  }
+}
+
+function saveState() {
+  fs.writeFileSync(DB_FILE, JSON.stringify(orders, null, 2));
+  fs.writeFileSync(INV_FILE, JSON.stringify(inventory, null, 2));
+}
 
 // UI Routes
 app.get('/', (req, res) => {
@@ -81,7 +92,7 @@ app.post('/api/v1/checkout', (req, res) => {
   });
 
   orders.unshift({ id: orderId, items, status: 'processing' });
-  saveOrders();
+  saveState();
   console.log(`[Audio Store] Order ${orderId} received. Fulfilled ${items.length} items.`);
   res.json({ success: true, orderId });
 });
@@ -106,7 +117,7 @@ app.post('/admin/ship', async (req, res) => {
     } catch (e) {
       console.error(`[Audio Store] Failed to send shipped webhook for ${orderId}`);
     }
-    saveOrders();
+    saveState();
   }
   res.redirect('/admin');
 });
@@ -127,7 +138,7 @@ app.post('/api/v1/refund', (req, res) => {
       inventory[item.id].qtyAvailable += item.qty;
     }
   });
-  saveOrders();
+  saveState();
   
   console.log(`[Audio Store] Processed refund for order ${orderId}`);
   res.json({ success: true });

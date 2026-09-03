@@ -13,11 +13,12 @@ export function registerTools(server: McpServer, agentId: string) {
     'search_network',
     'Search the federated network. Returns products from matching merchants based on semantic category routing.',
     {
-      query: z.string().describe('Search query (e.g. "headphones", "jacket", "charizard")')
+      query: z.string().describe('Search query (e.g. "headphones", "jacket", "charizard")'),
+      merchant_id: z.string().optional().describe('Optional: narrow search to a specific merchant ID')
     },
-    async ({ query }) => {
-      const results = await searchNetwork(query);
-      logAction(agentId, 'search_network', `Searched for ${query}`, 'PASS', { resultsCount: results.length });
+    async ({ query, merchant_id }) => {
+      const results = await searchNetwork(query, merchant_id);
+      logAction(agentId, 'search_network', `Searched for ${query}`, 'PASS', { resultsCount: results.length, merchant_id });
       
       // Format the results for Claude with Markdown Images!
       let formattedText = `Found ${results.length} results for "${query}":\n\n`;
@@ -297,6 +298,45 @@ export function registerTools(server: McpServer, agentId: string) {
         return { content: [{ type: 'text', text: JSON.stringify(status, null, 2) }] };
       } catch (e: any) {
         return { content: [{ type: 'text', text: `Failed to track order: ${e.message}` }] };
+      }
+    }
+  );
+
+  // 8. get_audit_trail
+  server.tool(
+    'get_audit_trail',
+    'Retrieve the full cryptographic ledger audit trail for a specific order. This proves all actions were authorized.',
+    {
+      cart_token: z.string().describe('The Order ID / Cart Token to audit')
+    },
+    async ({ cart_token }) => {
+      try {
+        const events = db.prepare(`
+          SELECT * FROM ledger 
+          WHERE details LIKE ? 
+             OR intent_rationale LIKE ?
+          ORDER BY timestamp ASC
+        `).all(`%${cart_token}%`, `%${cart_token}%`);
+        
+        const formattedEvents = events.map((e: any) => ({
+          ...e,
+          details: e.details ? JSON.parse(e.details) : null
+        }));
+
+        logAction(agentId, 'get_audit_trail', `Pulled audit trail for ${cart_token}`, 'PASS', { event_count: events.length });
+
+        return { 
+          content: [{ 
+            type: 'text', 
+            text: JSON.stringify({ 
+              message: "Audit Trail Retrieved Successfully",
+              total_events: formattedEvents.length,
+              timeline: formattedEvents 
+            }, null, 2) 
+          }] 
+        };
+      } catch (e: any) {
+        return { content: [{ type: 'text', text: `Failed to retrieve audit trail: ${e.message}` }] };
       }
     }
   );

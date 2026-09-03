@@ -1,11 +1,13 @@
 import db from '../db/sqlite.js';
 import redisClient from './redis.js';
 
-export async function searchNetwork(query: string) {
+export async function searchNetwork(query: string, merchantId?: string) {
   // 1. Semantic Router using FTS5 (BM25 ranking)
-  // If query is empty, we just grab all merchants for demo
-  let merchants = [];
-  if (!query) {
+  // If merchantId is provided, only search that merchant
+  let merchants: any[] = [];
+  if (merchantId) {
+    merchants = [{ merchant_id: merchantId }];
+  } else if (!query) {
     merchants = db.prepare('SELECT id as merchant_id FROM merchants').all();
   } else {
     // Basic match on FTS table

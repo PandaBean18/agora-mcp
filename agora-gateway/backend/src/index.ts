@@ -72,6 +72,33 @@ app.post('/api/mandates/:token/approve', async (req, res) => {
     res.status(500).json({ error: 'Failed to process mandate approval' });
   }
 });
+
+app.get('/api/ledger/:cartToken', (req, res) => {
+  try {
+    const { cartToken } = req.params;
+    
+    // We search the ledger for any events related to this cart token.
+    // The cart token might be in the details JSON (e.g. as cart_token, token, orderId)
+    // For a hackathon, a simple LIKE search across the JSON string is very effective.
+    const events = db.prepare(`
+      SELECT * FROM ledger 
+      WHERE details LIKE ? 
+         OR intent_rationale LIKE ?
+      ORDER BY timestamp ASC
+    `).all(`%${cartToken}%`, `%${cartToken}%`);
+    
+    // Parse the JSON details before sending
+    const formattedEvents = events.map((e: any) => ({
+      ...e,
+      details: e.details ? JSON.parse(e.details) : null
+    }));
+
+    res.json({ success: true, events: formattedEvents });
+  } catch (err: any) {
+    console.error('Error fetching ledger:', err);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+});
 // --------------------------------------------------
 
 // --- Webhooks for Order Tracking ---

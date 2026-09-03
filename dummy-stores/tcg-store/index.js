@@ -10,6 +10,7 @@ app.set('views', __dirname + '/views');
 const fs = require('fs');
 const path = require('path');
 const DB_FILE = path.join(__dirname, 'orders.json');
+const INV_FILE = path.join(__dirname, 'inventory.json');
 
 let orders = [];
 if (fs.existsSync(DB_FILE)) {
@@ -20,17 +21,26 @@ if (fs.existsSync(DB_FILE)) {
   }
 }
 
-function saveOrders() {
-  fs.writeFileSync(DB_FILE, JSON.stringify(orders, null, 2));
-}
-
 // Independent Inventory (TCG Store) - Prices in INR
-const database = {
+let database = {
   cards: [
     { uuid: 'base-set-charizard', cardName: 'Charizard Base Set Holo (PSA 9)', usdPrice: 85000000, inStock: 1, image: 'https://images.unsplash.com/photo-1613771404784-3a5686aa2be3?w=500&q=80' },
     { uuid: 'mtg-black-lotus', cardName: 'Black Lotus (Beta, MP)', usdPrice: 350000000, inStock: 0, image: 'https://images.unsplash.com/photo-1620336655055-088d06e36bf0?w=500&q=80' } // Simulating out of stock
   ]
 };
+
+if (fs.existsSync(INV_FILE)) {
+  try {
+    database = JSON.parse(fs.readFileSync(INV_FILE, 'utf-8'));
+  } catch (e) {
+    console.error('Failed to load inventory', e);
+  }
+}
+
+function saveState() {
+  fs.writeFileSync(DB_FILE, JSON.stringify(orders, null, 2));
+  fs.writeFileSync(INV_FILE, JSON.stringify(database, null, 2));
+}
 
 app.get('/', (req, res) => {
   res.render('index', { storeName: 'Rare Vault TCG', products: database.cards });
@@ -78,7 +88,7 @@ app.post('/webhooks/agora', (req, res) => {
   });
 
   orders.unshift({ id: purchaseData.orderId, items: purchaseData.items.map(i => ({ sku: i.uuid, qty: i.qty })), status: 'processing' });
-  saveOrders();
+  saveState();
   console.log(`[TCG Store] Webhook hit! Order ${purchaseData.orderId} processed.`);
   res.json({ ok: true, tracking: 'TRACK-1234' });
 });
@@ -103,7 +113,7 @@ app.post('/admin/ship', async (req, res) => {
     } catch (e) {
       console.error(`[TCG Store] Failed to send shipped webhook for ${orderId}`);
     }
-    saveOrders();
+    saveState();
   }
   res.redirect('/admin');
 });
@@ -123,7 +133,7 @@ app.post('/api/v1/refund', (req, res) => {
     const card = database.cards.find(c => c.uuid === item.sku);
     if (card) card.inStock += item.qty;
   });
-  saveOrders();
+  saveState();
   
   console.log(`[TCG Store] Processed refund for order ${orderId}`);
   res.json({ success: true });
