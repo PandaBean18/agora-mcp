@@ -255,6 +255,7 @@ app.get('/api/storefront', async (req, res) => {
 });
 
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { startCronJobs } from './services/cron.js';
 
 // Support Claude Desktop directly via Stdio
 if (process.argv.includes('--stdio')) {
@@ -266,6 +267,7 @@ if (process.argv.includes('--stdio')) {
   
   const transport = new StdioServerTransport();
   stdioServer.connect(transport).then(() => {
+    startCronJobs();
     console.error('Agora Gateway Stdio Server running for Claude Desktop');
   });
 } else {
@@ -273,6 +275,7 @@ if (process.argv.includes('--stdio')) {
   app.listen(PORT, async () => {
     try {
       await connectRedis();
+      startCronJobs();
     } catch (e) {
       console.error('Failed to connect to Redis on startup');
     }

@@ -39,54 +39,66 @@ export async function searchNetwork(query: string, merchantId?: string) {
     if (!merchant) continue;
 
     try {
-      const endpoints = JSON.parse(merchant.endpoints_json);
-      const fields = JSON.parse(merchant.fields_mapping_json);
+      // 3. LAZY UPDATES via CRON: Check Redis cache populated by cron job
+      let data = [];
+      try {
+        const cachedStr = await redisClient.get(`agora:catalog:${merchant.id}`);
+        if (cachedStr) {
+          data = JSON.parse(cachedStr);
+        }
+      } catch (e) {
+        console.error(`[Router] Redis error for ${merchant.id}:`, e);
+      }
 
-      let data;
-      if (endpoints.search_post) {
-        // Handle POST mapping (e.g. Store C)
-        const bodyStr = JSON.stringify(endpoints.search_post.body).replace('{{query}}', query);
-        const res = await fetch(`${merchant.base_url}${endpoints.search_post.url}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: bodyStr
-        });
-        const raw = await res.json();
-        data = raw.data || [];
-      } else {
-        // Handle GET mapping
-        const url = `${merchant.base_url}${endpoints.search.replace('{{query}}', encodeURIComponent(query))}`;
-        const res = await fetch(url);
-        const text = await res.text();
-        try {
-          data = JSON.parse(text);
-        } catch (e) {
-          console.error(`[Router] Invalid JSON from ${merchant.id} at ${url}:`, text.substring(0, 100));
-          data = [];
+      // Fallback if cron hasn't populated yet
+      if (!data || data.length === 0) {
+        const endpoints = JSON.parse(merchant.endpoints_json);
+        const fields = JSON.parse(merchant.fields_mapping_json);
+
+        let rawData;
+        if (endpoints.search_post) {
+          const bodyStr = JSON.stringify(endpoints.search_post.body).replace('{{query}}', '');
+          const res = await fetch(`${merchant.base_url}${endpoints.search_post.url}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: bodyStr
+          });
+          const raw = await res.json();
+          rawData = raw.data || [];
+        } else {
+          const url = `${merchant.base_url}${endpoints.search.replace('{{query}}', '')}`;
+          const res = await fetch(url);
+          rawData = await res.json();
+        }
+
+        const items = Array.isArray(rawData) ? rawData : [rawData];
+        for (const item of items) {
+          if (!item) continue;
+          let imageUrl = fields.image ? item[fields.image] : undefined;
+          if (imageUrl && !imageUrl.startsWith('http')) {
+            imageUrl = `${merchant.base_url}${imageUrl}`;
+          }
+          data.push({
+            agora_sku: `${merchant.id}::${item[fields.sku]}`,
+            merchant_id: merchant.id,
+            merchant_name: merchant.name,
+            sku: String(item[fields.sku]),
+            name: item[fields.name],
+            price_paise: Number(item[fields.price]),
+            stock: Number(item[fields.stock]),
+            description: fields.description ? item[fields.description] : undefined,
+            image_url: imageUrl
+          });
         }
       }
 
-      // Standardize response
-      const items = Array.isArray(data) ? data : [data];
-      for (const item of items) {
-        if (!item) continue;
-        
-        let imageUrl = fields.image ? item[fields.image] : undefined;
-        if (imageUrl && !imageUrl.startsWith('http')) {
-          imageUrl = `${merchant.base_url}${imageUrl}`;
+      // Filter locally based on the query (case-insensitive)
+      const q = query.toLowerCase();
+      for (const item of data) {
+        // If there's no query, or the query matches the name/description
+        if (!q || item.name.toLowerCase().includes(q) || (item.description && item.description.toLowerCase().includes(q))) {
+          results.push(item);
         }
-
-        results.push({
-          agora_sku: `${merchant.id}::${item[fields.sku]}`,
-          merchant_id: merchant.id,
-          merchant_name: merchant.name,
-          sku: String(item[fields.sku]),
-          name: item[fields.name],
-          price_paise: Number(item[fields.price]),
-          stock: Number(item[fields.stock]),
-          description: fields.description ? item[fields.description] : undefined,
-          image_url: imageUrl
-        });
       }
     } catch (e) {
       console.error(`[Router] Error querying merchant ${merchant.id}:`, e);
