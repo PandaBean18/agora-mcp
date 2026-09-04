@@ -30,6 +30,19 @@ A React (Vite) frontend with a brutalist design aesthetic.
 ### 3. Dummy Stores (`dummy-stores/`)
 A collection of headless Node.js merchant backends (e.g., Electronics Store, Game Vault Store) used to demonstrate the zero-code onboarding and dynamic routing capabilities of the network.
 
+## MCP Endpoints
+
+The Agora Gateway exposes the following Model Context Protocol (MCP) tools for AI agents to interact with the network:
+
+- **`search_network`**: Searches the federated network. Returns products from matching merchants based on semantic category routing and keyword matching.
+- **`get_product_details`**: Retrieves detailed information about a specific product using an exact SKU and Merchant ID returned by the search network.
+- **`lock_cart_and_quote`**: Locks a shopping cart and generates a final price quote (including taxes, shipping, and automated bundled upsells).
+- **`execute_settlement`**: Generates a Cryptographic Mandate for human approval to execute financial settlement. The AI cannot execute payments independently; it must pass this mandate to the human user.
+- **`check_mandate_status`**: Checks if the human user has successfully approved and paid the cryptographic mandate via the escrow gateway.
+- **`request_refund`**: Securely initiates a refund request for an order. Simulates the ledger entry and notifies the merchant.
+- **`track_order`**: Tracks the live fulfillment status and shipping information of an order directly from the merchant.
+- **`get_audit_trail`**: Retrieves the full cryptographic ledger audit trail for a specific order, proving that all actions in the chain were authorized by the human.
+
 ## Getting Started
 
 ### Prerequisites
