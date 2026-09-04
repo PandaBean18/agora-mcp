@@ -23,7 +23,7 @@
                         <h2 class="text-xl font-bold text-gray-900"><%= product.title || product.name || product.cardName %></h2>
                         <p class="text-gray-500 mt-2 text-sm line-clamp-2"><%= product.details || product.description %></p>
                         <div class="mt-4 flex justify-between items-center">
-                            <span class="text-2xl font-bold text-indigo-600">₹<%= (product.retailPrice || product.cost || product.usdPrice).toLocaleString() %></span>
+                            <span class="text-2xl font-bold text-indigo-600">₹<%= (product.price || product.retailPrice || product.cost || product.usdPrice).toLocaleString() %></span>
                             <span class="text-xs font-medium px-2 py-1 bg-green-100 text-green-700 rounded-full"><%= product.qtyAvailable || product.stock_count || product.inStock %> Left</span>
                         </div>
                     </div>

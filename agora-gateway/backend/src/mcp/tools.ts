@@ -256,8 +256,6 @@ export function registerTools(server: McpServer, agentId: string) {
         }
       };
 
-      logAction(agentId, 'check_mandate_status', `AI retrieved approved x402 envelope`, 'PASS', { cart_token: mandate.cart_token, ...ap2Envelope }, mandate.merchant_id);
-
       return { content: [{ type: 'text', text: JSON.stringify(ap2Envelope, null, 2) }] };
     }
   );

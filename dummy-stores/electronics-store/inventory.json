@@ -1,0 +1,37 @@
+{
+  "ps5-disc": {
+    "title": "PlayStation 5 Disc Edition Gaming Console",
+    "retailPrice": 5499000,
+    "qtyAvailable": 13,
+    "details": "Next-gen gaming console",
+    "imageUrl": "/images/spiderman_2_ps5.jpg"
+  },
+  "xbox-series-x": {
+    "title": "Xbox Series X Gaming Console",
+    "retailPrice": 4999000,
+    "qtyAvailable": 15,
+    "details": "The fastest, most powerful Xbox ever",
+    "imageUrl": "/images/xbox_series_x.jpg"
+  },
+  "switch-oled": {
+    "title": "Nintendo Switch OLED",
+    "retailPrice": 3499000,
+    "qtyAvailable": 30,
+    "details": "Play at home or on the go with a vibrant OLED screen",
+    "imageUrl": "https://images.unsplash.com/photo-1618366712010-f4ae9c647dcb?w=500&q=80"
+  },
+  "ps5-spiderman": {
+    "title": "Spider-Man 2 (PS5)",
+    "retailPrice": 499900,
+    "qtyAvailable": 50,
+    "details": "Swing through Marvels New York",
+    "imageUrl": "/images/spiderman_2_ps5.jpg"
+  },
+  "xbox-controller": {
+    "title": "Xbox Wireless Controller",
+    "retailPrice": 599000,
+    "qtyAvailable": 100,
+    "details": "Experience the modernized design of the Xbox Wireless Controller",
+    "imageUrl": "/images/xbox_series_x.jpg"
+  }
+}

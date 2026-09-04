@@ -1,190 +1,192 @@
-import { useEffect, useState } from 'react';
-import { ShoppingCart, Cpu, Activity, Store, ShieldAlert, Check, X, Loader2 } from 'lucide-react';
-import { Storefront } from '../components/Storefront';
-import { LedgerFeed } from '../components/LedgerFeed';
+import { Link } from 'react-router-dom';
+import { ScrollWorkflow } from '../components/ScrollWorkflow';
+import { WhatIsIt } from '../components/WhatIsIt';
+import { ValuePropTabs } from '../components/ValuePropTabs';
+import { FloatingProducts } from '../components/FloatingProducts';
+import { motion, useAnimationFrame } from 'framer-motion';
+import { useRef, useState } from 'react';
+
+// Live Wiring Diagram Component for Hero Section
+function WiringDiagram() {
+  return (
+    <div className="w-full max-w-5xl mx-auto py-16 relative mt-16 font-mono text-[10px] md:text-sm">
+      
+      <div className="bleed-line-h top-1/2 opacity-50 z-0" />
+      <div className="bleed-line-v left-1/2 opacity-50 z-0" />
+
+      {/* Connecting SVG Lines (Background) */}
+      <svg className="absolute inset-0 w-full h-full pointer-events-none z-0" style={{ overflow: 'visible' }}>
+        <motion.line 
+          x1="0%" y1="50%" x2="100%" y2="50%" 
+          stroke="rgba(9,9,9,0.15)" strokeWidth="1" 
+          initial={{ pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ duration: 1, ease: "easeInOut" }}
+        />
+        <motion.line 
+          x1="0%" y1="50%" x2="50%" y2="50%" 
+          stroke="#090909" 
+          strokeWidth="2" 
+          strokeDasharray="4 8"
+          className="animate-dash-march"
+          initial={{ pathLength: 0, opacity: 0 }}
+          animate={{ pathLength: 1, opacity: 1 }}
+          transition={{ duration: 1, delay: 0.5, ease: "easeInOut" }}
+        />
+        <motion.line 
+          x1="50%" y1="50%" x2="100%" y2="50%" 
+          stroke="#E63946" 
+          strokeWidth="2" 
+          strokeDasharray="4 8"
+          className="animate-dash-march"
+          initial={{ pathLength: 0, opacity: 0 }}
+          animate={{ pathLength: 1, opacity: 1 }}
+          transition={{ duration: 1, delay: 0.8, ease: "easeInOut" }}
+        />
+      </svg>
+
+      {/* Content Container */}
+      <div className="flex flex-col md:flex-row items-center justify-between gap-8 relative z-10 w-full">
+        
+        {/* Left Nodes: Merchant Ecosystem */}
+        <motion.div 
+          initial={{ opacity: 0, x: -20 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ duration: 0.6, delay: 0.5 }}
+          className="w-48 border border-dashed border-gray-400 bg-white z-10 flex flex-col p-4 crosshair-corner"
+        >
+          <div className="font-bold text-sm uppercase mb-1">Merchant Storefronts</div>
+          <div className="text-[10px] text-gray-500 leading-tight">Zero-integration distribution.<br/>Connect once, sell everywhere.</div>
+        </motion.div>
+
+        {/* Center Node: Agora Gateway */}
+        <motion.div 
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.6 }}
+          className="w-[340px] border border-[#090909] bg-[#F4F4F0] z-20 shadow-[12px_12px_0px_rgba(9,9,9,0.12)] p-8 crosshair-corner crosshair-corner-tl"
+        >
+          <div className="font-bold uppercase tracking-widest text-xl mb-1 text-center">Agora Gateway</div>
+          <div className="text-center mb-6">
+            <div className="text-[9px] text-gray-500 bg-white border border-gray-200 px-2 py-1 inline-block">ENGINE ACTIVE</div>
+          </div>
+          <ul className="text-xs space-y-3 text-gray-700 font-medium">
+            <li className="flex items-center gap-2"><span className="text-[#0044FF]">&gt;</span> Universal Search API</li>
+            <li className="flex items-center gap-2"><span className="text-[#0044FF]">&gt;</span> Cart Locking & Escrow</li>
+            <li className="flex items-center gap-2"><span className="text-[#0044FF]">&gt;</span> Upsell Engine</li>
+            <li className="flex items-center gap-2"><span className="text-[#0044FF]">&gt;</span> Unified Tracking API</li>
+            <li className="flex items-center gap-2"><span className="text-[#0044FF]">&gt;</span> Immutable Audit Trails</li>
+          </ul>
+        </motion.div>
+
+        {/* Right Node: AI Agent Ecosystem */}
+        <motion.div 
+          initial={{ opacity: 0, x: 20 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ duration: 0.6, delay: 0.8 }}
+          className="w-48 border border-[#090909] bg-white z-10 flex flex-col p-4 crosshair-corner crosshair-corner-tl"
+        >
+          <div className="font-bold text-[#E63946] text-sm uppercase mb-1">AI Agents</div>
+          <div className="text-[10px] text-gray-500 leading-tight">Query thousands of merchants through a single MCP endpoint.</div>
+        </motion.div>
+        
+      </div>
+    </div>
+  );
+}
+
 
 export default function Home() {
-  const [products, setProducts] = useState([]);
-  const [ledger, setLedger] = useState([]);
-  const [mandate, setMandate] = useState<any>(null);
-  const [mandateLoading, setMandateLoading] = useState(false);
-  const [mandateToken, setMandateToken] = useState<string | null>(null);
-
-  const fetchData = async () => {
-    try {
-      const [prodRes, ledgerRes] = await Promise.all([
-        fetch('http://localhost:3000/api/storefront'),
-        fetch('http://localhost:3000/api/ledger')
-      ]);
-      setProducts(await prodRes.json());
-      setLedger(await ledgerRes.json());
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  useEffect(() => {
-    fetchData();
-    const interval = setInterval(fetchData, 2000);
-    
-    // Check if we are on a mandate approval URL
-    const path = window.location.pathname;
-    if (path.startsWith('/mandate/')) {
-      const token = path.split('/')[2];
-      setMandateToken(token);
-      fetch(`http://localhost:3000/api/mandates/${token}`)
-        .then(res => res.json())
-        .then(data => {
-          if (!data.error) setMandate(data);
-        });
-    }
-
-    return () => clearInterval(interval);
-  }, []);
-
-  const approveMandate = async () => {
-    if (!mandateToken) return;
-    setMandateLoading(true);
-    try {
-      const res = await fetch(`http://localhost:3000/api/mandates/${mandateToken}/approve`, {
-        method: 'POST'
-      });
-      const data = await res.json();
-      if (data.success) {
-        setMandate({ ...mandate, approved: true });
-        setTimeout(() => {
-          window.location.href = '/'; // Go back to dashboard
-        }, 2000);
-      } else {
-        alert(data.error);
+  const containerVariants = {
+    hidden: { opacity: 0 },
+    show: {
+      opacity: 1,
+      transition: {
+        staggerChildren: 0.1,
+        delayChildren: 0.2
       }
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setMandateLoading(false);
     }
   };
 
-  const rejectMandate = () => {
-    window.location.href = '/';
+  const itemVariants = {
+    hidden: { y: "100%" },
+    show: { y: 0, transition: { duration: 0.8, ease: [0.16, 1, 0.3, 1] } }
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-200 font-sans selection:bg-indigo-500/30 relative">
+    <div className="min-h-screen bg-[var(--color-bg-base)] font-['Inter_Tight'] text-[var(--color-ink)] relative">
       
-      {/* Cryptographic Mandate Modal */}
-      {mandateToken && mandate && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4">
-          <div className="bg-slate-900 border border-slate-800 p-8 rounded-2xl shadow-2xl max-w-md w-full relative overflow-hidden">
-            <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-amber-500 to-orange-500"></div>
-            
-            <div className="flex flex-col items-center text-center space-y-4">
-              <div className="bg-amber-500/10 p-4 rounded-full border border-amber-500/20">
-                <ShieldAlert className="w-10 h-10 text-amber-500" />
-              </div>
-              
-              <h2 className="text-2xl font-bold text-slate-100">Cryptographic Mandate</h2>
-              
-              {mandate.approved ? (
-                <div className="flex flex-col items-center space-y-2 text-emerald-400 py-4">
-                  <Check className="w-12 h-12" />
-                  <p className="font-medium">Mandate Approved!</p>
-                  <p className="text-sm text-slate-400">You may close this tab and return to the AI.</p>
-                </div>
-              ) : (
-                <>
-                  <p className="text-slate-400">
-                    An AI Agent has requested authorization to execute a financial settlement.
-                  </p>
-                  
-                  <div className="bg-slate-950 rounded-xl p-4 w-full border border-slate-800 text-left space-y-2">
-                    <div className="flex justify-between items-center">
-                      <span className="text-slate-500 text-sm">Merchant</span>
-                      <span className="font-mono text-sm text-slate-300">{mandate.merchant_id}</span>
-                    </div>
-                    <div className="border-t border-slate-800 my-2"></div>
-                    
-                    {mandate.items?.map((item: any, idx: number) => (
-                      <div key={idx} className="flex justify-between items-center py-1">
-                        <span className="font-mono text-sm text-slate-300">{item.sku}</span>
-                        <span className="font-mono text-sm text-slate-500">x{item.quantity}</span>
-                      </div>
-                    ))}
-                    
-                    <div className="border-t border-slate-800 my-2"></div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-slate-400 font-medium">Total Quote</span>
-                      <span className="text-emerald-400 font-bold font-mono">₹{(mandate.quoted_total / 100).toFixed(2)}</span>
-                    </div>
-                  </div>
-
-                  <div className="flex gap-3 w-full pt-4">
-                    <button 
-                      onClick={rejectMandate}
-                      className="flex-1 px-4 py-3 rounded-lg border border-slate-700 text-slate-300 hover:bg-slate-800 transition-colors flex items-center justify-center gap-2 font-medium"
-                    >
-                      <X className="w-4 h-4" /> Reject
-                    </button>
-                    <button 
-                      onClick={approveMandate}
-                      disabled={mandateLoading}
-                      className="flex-1 px-4 py-3 rounded-lg bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white shadow-lg shadow-emerald-500/20 transition-all flex items-center justify-center gap-2 font-medium disabled:opacity-50"
-                    >
-                      {mandateLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />} 
-                      Approve
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
+      {/* Container to enforce center */}
+      <div className="flex flex-col relative z-10 w-full">
+        
+        {/* HEADER BAR (Full Width) */}
+        <div className="flex justify-between items-center px-8 py-6 border-b border-[#090909] bg-transparent">
+          <div className="font-black text-2xl tracking-tighter">
+            agoraMCP
+          </div>
+          <div className="flex gap-6 font-mono text-[11px] font-bold tracking-widest uppercase items-center">
+            <a href="https://github.com/rndbn/agora-mcp" target="_blank" rel="noreferrer" className="hover:text-gray-500 transition-colors">
+              DOCS
+            </a>
+            <Link to="/onboarding" className="text-[#E63946] hover:text-red-700 transition-colors">
+              /ONBOARDING
+            </Link>
           </div>
         </div>
-      )}
 
-      <header className="border-b border-slate-800 bg-slate-900/50 backdrop-blur-xl sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="bg-indigo-500/10 p-2 rounded-lg border border-indigo-500/20">
-              <Cpu className="w-5 h-5 text-indigo-400" />
-            </div>
-            <h1 className="text-xl font-bold bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent">
-              Agora Gateway
-            </h1>
-          </div>
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2 text-xs font-medium text-emerald-400 bg-emerald-400/10 px-3 py-1.5 rounded-full border border-emerald-400/20">
-              <Activity className="w-3.5 h-3.5" />
-              Federated Network Live
-            </div>
-          </div>
-        </div>
-      </header>
-
-      <main className="max-w-7xl mx-auto px-6 py-8">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+        {/* TOP SECTION: Massive Hero & SVG Wiring */}
+        <div className="px-8 pt-16 pb-32 relative">
           
-          <div className="lg:col-span-7 space-y-8">
-            <section>
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-semibold flex items-center gap-2 text-slate-100">
-                  <ShoppingCart className="w-5 h-5 text-slate-400" />
-                  Live Federated Storefront
-                </h2>
-                <span className="text-xs text-slate-500 font-mono flex items-center gap-1 uppercase">
-                  <Store className="w-3 h-3" />
-                  {new Set(products.map((p: any) => p.merchant_id)).size} MERCHANTS CONNECTED
-                </span>
-              </div>
-              <Storefront products={products} />
-            </section>
+          <motion.div 
+            variants={containerVariants}
+            initial="hidden"
+            animate="show"
+            className="text-[8vw] font-black leading-[0.85] tracking-tighter w-full"
+          >
+            <div className="overflow-hidden"><motion.div variants={itemVariants}>THE INFRASTRUCTURE</motion.div></div>
+            <div className="overflow-hidden"><motion.div variants={itemVariants}>FOR AI-DRIVEN COMMERCE.</motion.div></div>
+          </motion.div>
+
+          <WiringDiagram />
+        </div>
+
+        <WhatIsIt />
+        <ValuePropTabs />
+
+        {/* MIDDLE SECTION: Horizontal Scrolling Workflow */}
+        <ScrollWorkflow />
+
+        {/* BOTTOM SECTION: Floating Inventory Marquee */}
+        <FloatingProducts />
+
+        {/* BOTTOM SECTION: Integration Paths (Split, Borderless) */}
+        <div className="grid grid-cols-1 md:grid-cols-2 bg-white mt-32 border-t border-[#090909]">
+          
+          {/* Enterprise Path */}
+          <div className="p-16 md:p-32 flex flex-col items-start gap-8 border-b md:border-b-0 md:border-r border-[#090909]">
+            <div className="font-mono text-[11px] tracking-widest text-gray-500 uppercase font-bold">For Enterprise</div>
+            <h2 className="text-5xl font-black tracking-tighter leading-none">HEADLESS API<br/>ACCESS.</h2>
+            <p className="font-mono text-sm leading-relaxed text-gray-700 max-w-sm mt-8">
+              Direct headless API access. Bring your own storefront and inventory system. We provide the MCP endpoint and webhooks.
+            </p>
+            <Link to="/onboarding/enterprise" className="mt-8 font-mono text-sm font-bold uppercase border-b-2 border-[#090909] pb-1 hover:text-[#0044FF] hover:border-[#0044FF] transition-colors">
+              VIEW DOCUMENTATION
+            </Link>
           </div>
 
-          <div className="lg:col-span-5 h-[calc(100vh-8rem)] sticky top-24">
-            <LedgerFeed entries={ledger} />
+          {/* SMB Path */}
+          <div className="p-16 md:p-32 flex flex-col items-start gap-8">
+            <div className="font-mono text-[11px] tracking-widest text-gray-500 uppercase font-bold">For SMBs</div>
+            <h2 className="text-5xl font-black tracking-tighter leading-none">ZERO CODE<br/>ONBOARDING.</h2>
+            <p className="font-mono text-sm leading-relaxed text-gray-700 max-w-sm mt-8">
+              Zero-code onboarding. We host your checkout and handle the Razorpay escrow in our dedicated dashboard. We handle the heavy lifting.
+            </p>
+            <Link to="/onboarding/smb" className="mt-8 font-mono text-sm font-bold uppercase border-b-2 border-[#090909] pb-1 hover:text-[#E63946] hover:border-[#E63946] transition-colors">
+              OPEN DASHBOARD
+            </Link>
           </div>
 
         </div>
-      </main>
+
+      </div>
     </div>
   );
 }

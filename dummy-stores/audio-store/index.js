@@ -29,7 +29,7 @@ let inventory = {
   'sennheiser-m4': { title: 'Sennheiser Momentum 4 Headphones', retailPrice: 2999000, qtyAvailable: 12, details: 'Audiophile-grade sound with 60h battery life', imageUrl: 'https://images.unsplash.com/photo-1590658268037-6bf12165a8df?w=500&q=80' },
   'sony-xm5-cable': { title: 'Audiophile Braided Cable', retailPrice: 149900, qtyAvailable: 50, details: 'High-quality braided cable for zero latency', imageUrl: '/images/braided_cable.jpg' },
   'shure-sm7b': { title: 'Shure SM7B Vocal Microphone', retailPrice: 3990000, qtyAvailable: 4, details: 'The standard for podcasting', imageUrl: '/images/shure_sm7b.jpg' },
-  'premium-aux-cable': { title: 'Universal Premium Aux Cable', retailPrice: 99900, qtyAvailable: 100, details: 'Universal gold-plated aux cable for any headphones', imageUrl: '/images/braided_cable.jpg' }
+  'premium-aux-cable': { title: 'Universal Premium Aux Cable', retailPrice: 99900, qtyAvailable: 100, details: 'Universal gold-plated aux cable for any audio device', imageUrl: '/images/braided_cable.jpg' }
 };
 
 if (fs.existsSync(INV_FILE)) {

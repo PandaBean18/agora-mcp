@@ -70,6 +70,12 @@ export async function searchNetwork(query: string, merchantId?: string) {
       const items = Array.isArray(data) ? data : [data];
       for (const item of items) {
         if (!item) continue;
+        
+        let imageUrl = fields.image ? item[fields.image] : undefined;
+        if (imageUrl && !imageUrl.startsWith('http')) {
+          imageUrl = `${merchant.base_url}${imageUrl}`;
+        }
+
         results.push({
           agora_sku: `${merchant.id}::${item[fields.sku]}`,
           merchant_id: merchant.id,
@@ -79,7 +85,7 @@ export async function searchNetwork(query: string, merchantId?: string) {
           price_paise: Number(item[fields.price]),
           stock: Number(item[fields.stock]),
           description: fields.description ? item[fields.description] : undefined,
-          image_url: fields.image ? item[fields.image] : undefined
+          image_url: imageUrl
         });
       }
     } catch (e) {

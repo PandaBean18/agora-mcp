@@ -21,7 +21,12 @@ const transports = new Map<string, SSEServerTransport>();
 // --- Cryptographic Mandates (Human-in-the-Loop) ---
 
 app.get('/api/mandates/:token', (req, res) => {
-  const mandate = db.prepare('SELECT * FROM mandates WHERE token = ?').get(req.params.token) as any;
+  const mandate = db.prepare(`
+    SELECT m.*, mt.is_smb 
+    FROM mandates m
+    JOIN merchants mt ON m.merchant_id = mt.id
+    WHERE m.token = ?
+  `).get(req.params.token) as any;
   if (!mandate) return res.status(404).json({ error: 'Mandate not found or expired' });
   
   if (Date.now() > mandate.expires_at) {
@@ -117,6 +122,15 @@ app.post('/api/webhooks/order-update', (req, res) => {
 // --------------------------------------------------
 
 // --- Merchant Onboarding & SMB Dashboard ---
+app.get('/api/merchants', (req, res) => {
+  try {
+    const merchants = db.prepare(`SELECT * FROM merchants`).all();
+    res.json(merchants);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post('/api/merchants', (req, res) => {
   try {
     const { id, name, description, base_url, endpoints_json, fields_mapping_json, upsell_rules_json, is_smb, categories } = req.body;
